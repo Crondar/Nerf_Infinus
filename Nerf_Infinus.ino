@@ -10,14 +10,22 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <string>
+#include "Adafruit_seesaw.h"
 ////////////////////////////////////////////////////////
 #include <Adafruit_MotorShield.h>
 Adafruit_MotorShield AFMS = Adafruit_MotorShield();
 Adafruit_DCMotor *motor1 = AFMS.getMotor(1);
 Adafruit_DCMotor *motor2 = AFMS.getMotor(2);
+
+// On board NeoPixel ///////////////////////////////////
+#define NUMPIXELS 1
+#define PIXEL_PIN 16
+Adafruit_NeoPixel pixels(NUMPIXELS, PIXEL_PIN, NEO_GRB + NEO_KHZ800);
+////////////////////////////////////////////////////////
  
 ////////////////////////////////////////////////////////
 //Display declaration
+#define WIRE Wire
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 32 // OLED display height, in pixels
 // Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
@@ -27,41 +35,8 @@ Adafruit_DCMotor *motor2 = AFMS.getMotor(2);
 // On an arduino LEONARDO:   2(SDA),  3(SCL), ...
 #define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
 #define SCREEN_ADDRESS 0x3C ///< See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire1, OLED_RESET);
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &WIRE, OLED_RESET);
 ////////////////////////////////////////////////////////
- 
-#define NUMPIXELS 1
-#define PIXEL_PIN 16
-Adafruit_NeoPixel pixels(NUMPIXELS, PIXEL_PIN, NEO_GRB + NEO_KHZ800);
- 
-int loopCount = 0;
- 
-int breakbeam_pin = A0;
-int ledPin = 13;
-bool breakbeam_state = false;
- 
-int revPin = D11;
-int pusherReturnPin = D12;
-int magBBPin = D9;
-int barrelBBPin = D6;
-int firePin = D10;
-int loadingPin = D5;
-int magSwitchPin = D4;
- 
-bool reving = false;
-bool jammed = false;
-bool beamBroke = false;
-bool hasMag = false;
-int ammoCount = 0;
-
- 
-const float dart_length_ft = 2.875 / 12.0;
- 
-unsigned long breakbeam_start = 0;
- 
-unsigned int RED = pixels.Color(255, 0, 0);
-unsigned int GREEN = pixels.Color(0, 255, 0);
- 
  
 void DisplayFPS(float FPS)
 {
@@ -88,20 +63,164 @@ void DisplayAmmoCount(int ammoCount)
   display.println(ammoCount);
   display.display();
 }
+
+typedef void (*InputStateChangeFunction)(bool);
  
+#define barrel_breakbeam_pin 26 //A0
+#define revPin 11 // D11
+#define pusherReturnPin 12 // D12
+#define dart_ready_to_fire_pin 9 // D9
+#define barrelBBPin 8 // D6
+#define firePin 10 //D10
+#define loadingPin 7 //D5
+#define magSwitchPin 6 //D4
+#define ledPin 16  // 13
+
+#define ENCODER_SWITCH_I2C_PIN 24 //SDA? SCL? (dubious pin)
+
+//bool breakbeam_state = false;
+
+int ammoCount = 0;
+
+//Set jammed to true to stop the motors.  Reset by rebooting the program.
+bool jammed = false; 
+const double dart_length_ft = 2.875 / 12.0;
+const long intervalPusher = 200; // Interval, in milliseconds, that the pusher should activate for in semi-auto, then wait till returned.
+const long intervalLoader = 1250;// Interval, in milliseconds, that the loader activates for.
+ 
+unsigned long breakbeam_start = 0;
+ 
+unsigned int RED = pixels.Color(255, 0, 0);
+unsigned int GREEN = pixels.Color(0, 255, 0);
+
+const int num_LEDs = 0; 
+int LED_pins[num_LEDs] = {};
+bool LED_state[num_LEDs] = {};
+
+////////////////////////////////////////////////////////////////////
+// Arrays to store pin state at start of each loop
+const int num_input_pins = 7;
+int inputs[num_input_pins] = { barrel_breakbeam_pin,
+ revPin,
+ pusherReturnPin,
+ dart_ready_to_fire_pin, 
+ firePin,
+ loadingPin, 
+ magSwitchPin};
+
+
+const int num_inputs = num_input_pins + 1; //+1 for rotary encoder
+bool prev_input_state[num_inputs] = {};
+bool input_state[num_inputs] = {};
+bool input_state_changed[num_inputs] = {};
+
+////////////////////////////////////////////////////////////////////
+
+////////////////////////////////////////////////////////////////////
+// Helper functions to determine state without reading IO each time
+// Begin DigitalIO pins
+#define BARREL_BREAKBEAM_INDEX 0
+#define REVING_INDEX 1
+#define PUSHER_RETURN_INDEX 2 
+#define DART_READY_TO_FIRE_INDEX 3
+#define FIRE_INDEX 4
+#define IS_LOADING_INDEX 5
+#define MAGAZINE_INSERTED_INDEX 6
+
+//Begin I2C controls
+#define ENCODER_BUTTON_PRESSED_INDEX 7
+
+bool inline IsDartInBarrel() {return !input_state[BARREL_BREAKBEAM_INDEX]; }
+bool inline IsReving() { return input_state[REVING_INDEX]; }
+bool inline IsPusherReturned() { return input_state[PUSHER_RETURN_INDEX]; }
+bool inline IsDartReadyToFire() { return input_state[DART_READY_TO_FIRE_INDEX];} 
+bool inline IsFiring() { return input_state[FIRE_INDEX]; }
+bool inline IsLoading() {return input_state[IS_LOADING_INDEX];}
+bool inline IsMagInserted() {return input_state[MAGAZINE_INSERTED_INDEX];}
+bool inline IsEncoderButtonPressed() {return input_state[ENCODER_BUTTON_PRESSED_INDEX]}
+////////////////////////////////////////////////////////////////////
+
+bool beamBroke = false;
+
+void breakbeamPinFunction(bool inputValue) {
+  //IsDartInBarrel = !digitalRead(barrel_breakbeam_pin); //sensorValue > 1000;
+  
+  if (IsDartInBarrel()) {
+      digitalWrite(ledPin, HIGH);
+      breakbeam_start = micros();
+      pixels.setPixelColor(0, RED);
+      beamBroke = true;
+ 
+      //Serial.println(IsDartInBarrel);
+    }
+    else {
+      digitalWrite(ledPin, LOW);
+      unsigned long elapsed = (micros() - breakbeam_start);
+      double elapsed_sec = elapsed / 1000000.0;
+      double FPS = dart_length_ft / elapsed_sec;
+      char output[256];
+      snprintf(output, 256, "FPS: %0.1f Elapsed: %0.1fms", FPS, elapsed_sec * 1000);
+      Serial.println(output);
+      pixels.setPixelColor(0, GREEN);
+      DisplayFPS(FPS);
+      DisplayAmmoCount(ammoCount);
+    }
+
+  pixels.show();
+}
+
+void pusherReturnPinFunction(bool inputValue) {
+  bool pusherReturned = digitalRead(pusherReturnPin);
+  if (pusherReturned and beamBroke) {
+    ammoCount -= 1;
+    beamBroke = false;
+  }
+  else if (pusherReturned and !beamBroke){
+    ammoCount -= 1;
+    jammed = true;
+  }
+}
+
+void revPinFunction(bool inputValue) {
+  motor1->run(IsReving ? FORWARD : RELEASE);
+}
+
+void firePinFunction(bool inputValue) {
+  motor2->run(IsFiring ? FORWARD : RELEASE);
+}
+
+void dart_ready_to_fire_pinFunction(bool inputValue) {
+}
+
+void barrelBBPinFunction(bool inputValue) {
+}
+
+void loadingPinFunction(bool inputValue) {
+  if (digitalRead(loadingPin)){
+    ammoCount += 1;
+  }
+}
+
+void magSwitchPinFunction(bool inputValue) {
+  bool hasMag = digitalRead(magSwitchPin);
+}
+
+InputStateChangeFunction device_state_functions[num_input_pins] = { 
+ breakbeamPinFunction, pusherReturnPinFunction,
+ revPinFunction, firePinFunction,
+ dart_ready_to_fire_pinFunction, barrelBBPinFunction,
+ loadingPinFunction, magSwitchPinFunction};
+
 void setup() {
-  Serial.begin(115200);
-  pinMode(ledPin, OUTPUT);
-  pinMode(A0, INPUT_PULLUP);
- 
-  pinMode(revPin, INPUT);
-  pinMode(pusherReturnPin, INPUT);
-  pinMode(magBBPin, INPUT);
-  pinMode(barrelBBPin, INPUT);
-  pinMode(firePin, INPUT);
-  pinMode(loadingPin, INPUT);
-  pinMode(magSwitchPin, INPUT);
- 
+  
+  for(int i = 0; i < num_input_pins; i++) {
+    pinMode(inputs[i], INPUT_PULLDOWN);
+  }
+
+  for(int i = 0; i < num_LEDs; i++) {
+    pinMode(LED_pins[i], OUTPUT);
+  }
+
   AFMS.begin();
   motor1->setSpeed(240);
   motor2->setSpeed(100);
@@ -115,99 +234,30 @@ void setup() {
     Serial.println(F("SSD1306 allocation failed"));
     pixels.setPixelColor(0, pixels.Color(255, 0, 0));
     pixels.show();
-    delay(5000);
+    delay(3000);
   }
   display.cp437(true);         // Use full 256 char 'Code Page 437' font
  
   display.clearDisplay();
+
 }
- 
-void loop() {
-  int sensorValue = digitalRead(breakbeam_pin);
-  bool beam_broken = !sensorValue; //sensorValue > 1000;
-  bool pusher_returned = digitalRead(pusherReturnPin);
+
+void loop() { 
   
-  //Serial.println(sensorValue);
-  if (beam_broken != breakbeam_state)
-  {
-    breakbeam_state = beam_broken;
-    if (beam_broken) {
-      digitalWrite(ledPin, HIGH);
-      breakbeam_start = micros();
-      pixels.setPixelColor(0, RED);
-      beamBroke = true;
+  for (int i = 0; i < num_input_pins; i++) {
+    input_state[i] = digitalRead(inputs[i]);
+  }
+
+  input_state[num_input_pins] = ss.digitalRead(ENCODER_SWITCH_I2C_PIN);
+
+  for(int i = 0; i < num_inputs; i++)
+    input_state_changed[i] = input_state[i] != prev_input_state[i];
+    prev_input_state[i] = input_state[i];
+  }
  
-      //Serial.println(beam_broken);
+  for (int i = 0; i < num_inputs; i++) {
+    if (input_state_changed[i]) {
+      (*device_state_functions[i])(input_state[i]);
     }
-    else {
-      digitalWrite(ledPin, LOW);
-      unsigned long elapsed = (micros() - breakbeam_start);
-      float elapsed_sec = elapsed / 1000000.0;
-      float FPS = dart_length_ft / elapsed_sec;
-      char output[256];
-      snprintf(output, 256, "FPS: %0.1f Elapsed: %0.1fms", FPS, elapsed_sec * 1000);
-      Serial.println(output);
-      pixels.setPixelColor(0, GREEN);
-      DisplayFPS(FPS);
-      DisplayAmmoCount(ammoCount);
-    }
- 
-    pixels.show();
-  }
-  
-  if (pusher_returned and beamBroke)
-  {
-    beamBroke = false;
-    ammoCount -= 1;
-  }
-  else if (pusher_returned)
-  {
-    jammed = true;
-  }
-  else
-  {
-    jammed = true;
-  }
- 
-  if (digitalRead(revPin) and ammoCount >= 1 and !jammed)
-  {
-    reving = true;
-  }
-  else
-  {
-    reving = false;
-  }
- 
-  motor1->run(reving ? FORWARD : RELEASE);
-  /*
-  if (reving)
-  {
-    motor1->run(FORWARD);
-  }
-  else {
-    motor1->run(RELEASE);
-  }*/
- 
-  if (digitalRead(firePin) and !jammed)
-  {
-    motor2->run(FORWARD);
-  }
-  else {
-    motor2->run(RELEASE);
-  }
- 
-  if (digitalRead(loadingPin))
-  {
-    ammoCount += 1;
-    Serial.print(ammoCount, DEC);
-  }
- 
-  hasMag = digitalRead(magSwitchPin);
- 
-  if (!hasMag)
-  {
-    ammoCount = 0;
   }
 }
- 
- 

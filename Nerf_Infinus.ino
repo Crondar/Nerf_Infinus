@@ -13,6 +13,7 @@
 #include "Adafruit_seesaw.h"
 ////////////////////////////////////////////////////////
 #include <Adafruit_MotorShield.h>
+
 Adafruit_MotorShield AFMS = Adafruit_MotorShield();
 Adafruit_DCMotor *motor1 = AFMS.getMotor(1);
 Adafruit_DCMotor *motor2 = AFMS.getMotor(2);
@@ -25,7 +26,7 @@ Adafruit_NeoPixel pixels(NUMPIXELS, PIXEL_PIN, NEO_GRB + NEO_KHZ800);
  
 ////////////////////////////////////////////////////////
 //Display declaration
-#define WIRE Wire
+#define WIRE Wire  
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 32 // OLED display height, in pixels
 // Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
@@ -35,7 +36,7 @@ Adafruit_NeoPixel pixels(NUMPIXELS, PIXEL_PIN, NEO_GRB + NEO_KHZ800);
 // On an arduino LEONARDO:   2(SDA),  3(SCL), ...
 #define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
 #define SCREEN_ADDRESS 0x3C ///< See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &WIRE, OLED_RESET);
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire1, OLED_RESET);
 ////////////////////////////////////////////////////////
  
 void DisplayFPS(float FPS)
@@ -76,7 +77,9 @@ typedef void (*InputStateChangeFunction)(bool);
 #define magSwitchPin 6 //D4
 #define ledPin 16  // 13
 
-#define ENCODER_SWITCH_I2C_PIN 24 //SDA? SCL? (dubious pin)
+#define ENCODER_SWITCH_I2C_PIN 24 //default
+
+#define SEESAW_ADDR          0x36
 
 //bool breakbeam_state = false;
 
@@ -114,6 +117,18 @@ bool prev_input_state[num_inputs] = {};
 bool input_state[num_inputs] = {};
 bool input_state_changed[num_inputs] = {};
 
+size_t println(const String &s)
+{
+  size_t result = Serial.println(s);
+  display.clearDisplay();
+  display.setCursor(0, 0);  
+  display.setTextSize(1);             // Normal 1:1 pixel scale
+  display.setTextColor(SSD1306_WHITE);        // Draw white text
+  display.println(s);
+  display.display();
+  return result;
+}
+
 ////////////////////////////////////////////////////////////////////
 
 ////////////////////////////////////////////////////////////////////
@@ -130,6 +145,8 @@ bool input_state_changed[num_inputs] = {};
 //Begin I2C controls
 #define ENCODER_BUTTON_PRESSED_INDEX 7
 
+Adafruit_seesaw ss = Adafruit_seesaw(&Wire1);
+
 bool inline IsDartInBarrel() {return !input_state[BARREL_BREAKBEAM_INDEX]; }
 bool inline IsReving() { return input_state[REVING_INDEX]; }
 bool inline IsPusherReturned() { return input_state[PUSHER_RETURN_INDEX]; }
@@ -137,7 +154,7 @@ bool inline IsDartReadyToFire() { return input_state[DART_READY_TO_FIRE_INDEX];}
 bool inline IsFiring() { return input_state[FIRE_INDEX]; }
 bool inline IsLoading() {return input_state[IS_LOADING_INDEX];}
 bool inline IsMagInserted() {return input_state[MAGAZINE_INSERTED_INDEX];}
-bool inline IsEncoderButtonPressed() {return input_state[ENCODER_BUTTON_PRESSED_INDEX]}
+bool inline IsEncoderButtonPressed() {return input_state[ENCODER_BUTTON_PRESSED_INDEX];}
 ////////////////////////////////////////////////////////////////////
 
 bool beamBroke = false;
@@ -192,9 +209,6 @@ void firePinFunction(bool inputValue) {
 void dart_ready_to_fire_pinFunction(bool inputValue) {
 }
 
-void barrelBBPinFunction(bool inputValue) {
-}
-
 void loadingPinFunction(bool inputValue) {
   if (digitalRead(loadingPin)){
     ammoCount += 1;
@@ -205,14 +219,38 @@ void magSwitchPinFunction(bool inputValue) {
   bool hasMag = digitalRead(magSwitchPin);
 }
 
-InputStateChangeFunction device_state_functions[num_input_pins] = { 
- breakbeamPinFunction, pusherReturnPinFunction,
- revPinFunction, firePinFunction,
- dart_ready_to_fire_pinFunction, barrelBBPinFunction,
- loadingPinFunction, magSwitchPinFunction};
+void encoderButtonPressedFunction(bool inputValue){
+  bool is_pressed = !inputValue; //Rotary button is reversed output
+  if(is_pressed)
+    println("Pressed");
+  else
+    println("Release");
+}
+
+
+InputStateChangeFunction device_state_functions[num_inputs] = { 
+  breakbeamPinFunction, 
+  pusherReturnPinFunction,
+  revPinFunction, 
+  firePinFunction,
+  dart_ready_to_fire_pinFunction,
+  loadingPinFunction,
+  magSwitchPinFunction, 
+  encoderButtonPressedFunction
+ };
 
 void setup() {
-  
+  Serial.begin(115200);
+  while (!Serial) delay(10);
+
+  println("hello world");
+
+  println("Init Pixels");
+  pixels.begin();
+  pixels.setPixelColor(0, pixels.Color(0, 128, 0));
+  pixels.setBrightness(64);
+  pixels.show();
+
   for(int i = 0; i < num_input_pins; i++) {
     pinMode(inputs[i], INPUT_PULLDOWN);
   }
@@ -221,36 +259,56 @@ void setup() {
     pinMode(LED_pins[i], OUTPUT);
   }
 
-  AFMS.begin();
-  motor1->setSpeed(240);
-  motor2->setSpeed(100);
- 
-  pixels.begin();
-  pixels.setPixelColor(0, pixels.Color(0, 150, 0));
-  pixels.setBrightness(64);
-  pixels.show();
- 
+  Serial.println("Init Display");
   if (!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
     Serial.println(F("SSD1306 allocation failed"));
     pixels.setPixelColor(0, pixels.Color(255, 0, 0));
     pixels.show();
     delay(3000);
   }
+else
+{
   display.cp437(true);         // Use full 256 char 'Code Page 437' font
  
   display.clearDisplay();
+  println("Display cleared"); 
+}
+  println("Init AFMS");
+  if (!AFMS.begin(1600, &Wire1)) {         // create with the default frequency 1.6KHz
+  // if (!AFMS.begin(1000)) {  // OR with a different frequency, say 1KHz
+    println("Could not find Motor Shield. Check wiring.");
+    
+    while (1);
+  }
+  else{ 
+    motor1->setSpeed(240);
+    motor2->setSpeed(100);
+  }
+   
+  if (! ss.begin(SEESAW_ADDR) ) {
+  Serial.println("Couldn't find seesaw on default address");
+  while(1) delay(10);
+  }
+  Serial.println("seesaw started");
 
+ 
+  ss.setGPIOInterrupts((uint32_t)1 << ENCODER_SWITCH_I2C_PIN, 1);
+  println("Init GPIO Interrupts");
+  ss.enableEncoderInterrupt();
+  println("Seesaw Encoder Interrupts enabled");
+
+  ss.pinMode(ENCODER_SWITCH_I2C_PIN, INPUT_PULLUP);
 }
 
-void loop() { 
-  
+void loop() {  
+
   for (int i = 0; i < num_input_pins; i++) {
     input_state[i] = digitalRead(inputs[i]);
   }
 
   input_state[num_input_pins] = ss.digitalRead(ENCODER_SWITCH_I2C_PIN);
 
-  for(int i = 0; i < num_inputs; i++)
+  for(int i = 0; i < num_inputs; i++){
     input_state_changed[i] = input_state[i] != prev_input_state[i];
     prev_input_state[i] = input_state[i];
   }

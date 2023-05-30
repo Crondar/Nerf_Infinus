@@ -25,5 +25,4 @@ public:
 
   GunConfig(int fireRate, int dartSpeed, int startingAmmoCount, FireMode fireMode, AmmoCountMode ammoCountMode, ChronographUnits chronographUnits, bool safetyOn, bool revLockOn, bool fireLockOn, Range motorPWMRange);
   GunConfig();
-
-  };
+};

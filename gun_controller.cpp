@@ -3,35 +3,22 @@
 
 GunController::GunController(GunConfig *config, GunState *model, Adafruit_MotorShield *afms) {
   this->AFMS = afms;
-  this->motor1 = AFMS->getMotor(1);
-  this->motor2 = AFMS->getMotor(2);
+  this->flywheelMotor = AFMS->getMotor(1);
+  this->guillotineMotor = AFMS->getMotor(2);
+  this->loadingMotor = AFMS->getMotor(3);
   this->config = config;
   this->model = model;
   this->_AmmoCount = config->startingAmmoCount;
   this->_last_dart_speed_fps = 0;
-  // _input_state = input_state;
-  // _ammoCountUp = ammoCountUp;
-  // _startingAmmoCountType = startingAmmoCountType;
-  // _chronographUnits = chronographUnits;
-  // _safetyOn = safetyOn;
-  // _revLockOn = revLockOn;
-  // _fireLockOn = fireLockOn;
-
-  //_breakbeam_start_time = 0;
-  //_loadingStart = 0;
-  //_currentMillisPusher = 0;
-  // _fire_mode_index = 0;
-  // _ammo_count_up_index = 1;
-  // _starting_ammo_count_type_index = 2;
-  // _chronograph_units_index = 3;
-  // _safety_on_index = 4;
-  // _rev_lock_on_index = 5;
-  // _fire_lock_on_index = 6;
 }
 
 void GunController::Initialize() {
-  this->motor1->setSpeed(10);
-  this->motor2->setSpeed(100);
+  this->flywheelMotor->setSpeed(this->config->motorPWMRange.interpolate(1.0));
+  this->guillotineMotor->setSpeed(this->config->motorPWMRange.interpolate(1.0));
+  this->loadingMotor->setSpeed(this->config->motorPWMRange.interpolate(1.0));
+  pinMode(flywheelPWM, OUTPUT);
+  pinMode(flywheelDirection, OUTPUT);
+  analogWriteFreq(20000);
 }
 
 //void GunController::GunController::PusherReturned(){
@@ -63,6 +50,12 @@ bool GunController::IsLoading() {
 bool GunController::IsMagInserted() {
   return this->model->IsMagInserted();
 }
+bool GunController::IsDartInLoadingPosition() {
+  return this->model->IsDartInLoadingPosition();
+}
+bool GunController::IsGuillotineReturned() {
+  return this->model->IsGuillotineReturned();
+}
 
 double GunController::GetLastDartSpeed() {
   return this->_last_dart_speed_fps;
@@ -75,23 +68,21 @@ void GunController::SetAmmoCount(int inputValue) {
   this->_AmmoCount = inputValue;
 }
 
-/*
-bool inline GunController::IsEncoderButtonPressed() {return state.input_state[this->_encoder_button_pressed_index];}
-bool inline GunController::IsfireModeSemi() {return model.fireMode;}
-bool inline GunController::IsAmmoCountUp() {return model.ammoCountUp;}
-bool inline GunController::IsStartingAmmoCount() {return model.startingAmmoCountType;}
-bool inline GunController::IsChronographUnits() {return model.chronographUnits;}
-bool inline GunController::IsSafetyOn() {return model.safetyOn;}
-bool inline GunController::IsRevLockOn () {return model.revLockOn;}
-bool inline GunController::IsFireLockOn() {return model.fireLockOn;}
-*/
-
-//Check that the dart is likely to have fully loaded and the guillotine will not collide with the pusher
+//Check that the dart is likely to have fully loaded and that the guillotine will not collide with the pusher
 bool inline GunController::IsLoadingInProgress() {
   unsigned long loadingTimeElapsed = (millis() - this->_loadingStart_time);
   return loadingTimeElapsed < intervalLoader;
-}  //needs to be millis()
+}
 
+void GunController::RunFlywheels(bool state, bool direction, int PWM /*PWM values 0-255 */) {
+ if (state){
+    analogWrite(flywheelPWM, PWM);
+    digitalWrite(flywheelDirection, direction);
+  }
+    else {
+      analogWrite(flywheelPWM, 0);
+    }
+}
 
 void GunController::OnBreakbeamChanged(bool inputValue) {
   //this->IsDartInBarrel = !digitalRead(barrel_breakbeam_pin); //sensorValue > 1000;
@@ -115,7 +106,6 @@ void GunController::OnBreakbeamChanged(bool inputValue) {
     // DisplayFPS(FPS);
     // DisplayAmmoCount(ammoCount);
   }
-  // printlnWithXY((inputValue) ? "beam not broken" : "beam broken", 0, 15);
 
   //pixels.show();
 }
@@ -129,9 +119,9 @@ void GunController::OnPusherReturnChanged(bool inputValue) {
   }
   // jammed = this->IsFiring() && breakbeam_start > micros() - 500000;
   if (config->fireMode == SEMI) {
-    motor2->run(RELEASE);
+    flywheelMotor->run(RELEASE);
   } else if (!inputValue || this->IsLoadingInProgress() || (this->IsReving() ? false : (!config->fireLockOn) ? false : true) || !model->IsDartReadyToFire() /*|| jammed */ || config->safetyOn) {
-    motor2->run(RELEASE);
+    flywheelMotor->run(RELEASE);
   }
   _firing = !inputValue || this->IsLoadingInProgress() || (this->IsReving() ? false : (!config->fireLockOn) ? false : true) || !model->IsDartReadyToFire() /*|| jammed*/ || config->safetyOn ? false : true;
   //println((inputValue) ? "pusher returned," : "pusher not returned");
@@ -139,24 +129,16 @@ void GunController::OnPusherReturnChanged(bool inputValue) {
 }
 
 void GunController::OnRevChanged(bool inputValue) {
-  motor1->run((inputValue && (this->IsDartReadyToFire() ? true : (!config->revLockOn) ? true
-                                                                                      : false) /*&& !jammed*/
-               && !config->safetyOn)
-                ? FORWARD
-                : RELEASE);
+  RunFlywheels((inputValue && (this->IsDartReadyToFire() ? true : (!config->revLockOn) ? true : false) /*&& !jammed*/&& !config->safetyOn) ? true : false, true, this->config->motorPWMRange.interpolate(0.0)); // lower bound 25
   _reving = (inputValue && (this->IsDartReadyToFire() ? true : (!config->revLockOn) ? true : false) /*&& !jammed*/ && !config->safetyOn) ? true : false;
 }
 
 void GunController::OnFireChanged(bool inputValue) {
   this->_currentMillisPusher_time = millis();
   if (inputValue) {
-    motor2->run((!this->IsLoadingInProgress() && (this->model->IsReving() ? true : (!config->fireLockOn) ? true
-                                                                                                         : false)
-                 && model->IsDartReadyToFire() /*&& !jammed*/ && !config->safetyOn)
-                  ? FORWARD
-                  : RELEASE);
+    flywheelMotor->run((!this->IsLoadingInProgress() && (this->model->IsReving() ? true : (!config->fireLockOn) ? true: false)&& model->IsDartReadyToFire() /*&& !jammed*/ && !config->safetyOn) ? FORWARD : RELEASE);
     _firing = (!this->IsLoadingInProgress() && (this->model->IsReving() ? true : (!config->fireLockOn) ? true : false) && model->IsDartReadyToFire() /*&& !jammed*/ && !config->safetyOn) ? true : false;
-    // Serial.println(jammed);
+    //Serial.println(jammed);
   }
 }
 
@@ -167,6 +149,7 @@ void GunController::OnDartReadyToFireChanged(bool inputValue) {
 void GunController::OnDartLoadedChanged(bool inputValue) {
   this->_AmmoCount += inputValue;
   this->_loadingStart_time = millis();
+  loadingMotor->run(FORWARD);
   //printlnWithXY((inputValue) ? "loading" : "not loading", 0, 15);
   Serial.println(this->IsLoadingInProgress());
 }
@@ -174,6 +157,19 @@ void GunController::OnDartLoadedChanged(bool inputValue) {
 void GunController::OnMagazineLoadedChanged(bool inputValue) {
   this->_AmmoCount = this->config->ammoCountMode == UP ? 0 : this->config->startingAmmoCount;
   //printlnWithXY((inputValue) ? "mag inserted" : "mag not inserted", 0, 15);
+}
+
+void GunController::OnDartInLoadingPositionChanged(bool inputValue) {
+ if (IsPusherReturned()){
+    guillotineMotor->run(FORWARD);
+  }
+  loadingMotor->run(RELEASE);
+}
+
+void GunController::OnGuillotineReturnChanged(bool inputValue) {
+  if (inputValue) {
+    guillotineMotor->run(RELEASE);
+  }
 }
 
 String GunController::ToString(){

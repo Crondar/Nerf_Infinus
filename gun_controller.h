@@ -6,6 +6,8 @@
 #include "constants.h"
 #include "gun_state.h"
 #include "gun_config.h"
+#include "range.h"
+
 
 class GunController {
 private:
@@ -13,8 +15,9 @@ private:
   GunState *model;
 
   Adafruit_MotorShield *AFMS;
-  Adafruit_DCMotor *motor1;
-  Adafruit_DCMotor *motor2;
+  Adafruit_DCMotor *flywheelMotor;
+  Adafruit_DCMotor *guillotineMotor;
+  Adafruit_DCMotor *loadingMotor;
 
   unsigned long _breakbeam_start_time;
   unsigned long _loadingStart_time;
@@ -30,15 +33,6 @@ public:
   GunController(GunConfig *config, GunState *model, Adafruit_MotorShield *afms);
   void Initialize();
 
-  /*
-      bool inline IsfireModeSemi() {};
-      bool inline IsAmmoCountUp();
-      bool inline IsStartingAmmoCount();
-      bool inline IsChronographUnits();
-      bool inline IsSafetyOn();
-      bool inline IsRevLockOn ();
-      bool inline IsFireLockOn();
-      */
   bool inline IsLoadingInProgress();
 
   bool IsDartInBarrel();
@@ -48,8 +42,12 @@ public:
   bool IsFiring();
   bool IsLoading();
   bool IsMagInserted();
+  bool IsDartInLoadingPosition();
+  bool IsGuillotineReturned();
 
   void SetAmmoCount(int);
+
+  void RunFlywheels(bool, bool, int);
 
   double GetLastDartSpeed();
   int GetAmmoCount();  //Current ammo count the gun believes it has
@@ -64,6 +62,8 @@ public:
   void OnFireChanged(bool);
   void OnDartLoadedChanged(bool);
   void OnMagazineLoadedChanged(bool);
+  void OnDartInLoadingPositionChanged(bool);
+  void OnGuillotineReturnChanged(bool);
 
   String ToString();
 };

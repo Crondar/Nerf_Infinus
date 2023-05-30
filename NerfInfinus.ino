@@ -71,7 +71,7 @@ typedef void (*InputStateChangeFunction)(bool);
 
 
 //needs to be D_, A_, etc. to work
-#define barrel_breakbeam_pin A0
+#define barrel_breakbeam_pin A2
 #define revPin D11
 #define pusherReturnPin D12
 #define dart_ready_to_fire_pin D9
@@ -79,21 +79,19 @@ typedef void (*InputStateChangeFunction)(bool);
 #define firePin D10
 #define loadingPin 7
 #define magSwitchPin 6
+#define dartStopSwitchPin D13
+#define guillotineReturnPin 8
 #define ledPin 16  // 13
+
+
 
 #define ENCODER_SWITCH_I2C_PIN 24  //default
 
 #define SEESAW_ADDR 0x36
 
-//bool breakbeam_state = false;
-
 
 //Set jammed to true to stop the motors.  Reset by rebooting the program.
 bool jammed = false;
-
-// unsigned long breakbeam_start = 0;
-// unsigned long loadingStart = 0;
-// unsigned long currentMillisPusher = 0;
 
 unsigned int RED = pixels.Color(255, 0, 0);
 unsigned int GREEN = pixels.Color(0, 255, 0);
@@ -104,12 +102,14 @@ bool LED_state[num_LEDs] = {};
 ////////////////////////////////////////////////////////////////////
 // Arrays to store pin state at start of each loop
 uint8_t inputs[num_input_pins] = { barrel_breakbeam_pin,
-                                   revPin,
-                                   pusherReturnPin,
-                                   dart_ready_to_fire_pin,
-                                   firePin,
-                                   loadingPin,
-                                   magSwitchPin };
+revPin,
+pusherReturnPin,
+dart_ready_to_fire_pin,
+firePin,
+loadingPin,
+magSwitchPin,
+dartStopSwitchPin,
+guillotineReturnPin };
 
 
 const int num_inputs = num_input_pins;
@@ -131,9 +131,11 @@ bool input_state_changed[num_inputs] = {};
 #define FIRE_INDEX 4
 #define IS_LOADING_INDEX 5
 #define MAGAZINE_INSERTED_INDEX 6
+#define DART_IN_LOADING_POSITION_INDEX 7
+#define GUILLOTINE_RETURN_INDEX 8 
 
 //Begin I2C controls
-#define ENCODER_BUTTON_PRESSED_INDEX 7
+#define ENCODER_BUTTON_PRESSED_INDEX 9
 
 Adafruit_seesaw ss = Adafruit_seesaw(&Wire1);
 
@@ -213,77 +215,6 @@ void OnMagazineLoadedChanged(bool inputVal) {
   gun_controller.OnMagazineLoadedChanged(inputVal);
 }
 
-//   //IsDartInBarrel = !digitalRead(barrel_breakbeam_pin); //sensorValue > 1000;
-
-//   if (IsDartInBarrel()) {
-//       digitalWrite(ledPin, HIGH);
-//       breakbeam_start = micros();
-//       pixels.setPixelColor(0, RED);
-//       // beamBroke = true;
-
-//       //Serial.println(IsDartInBarrel);
-//     }
-//     else {
-//       digitalWrite(ledPin, LOW);
-//       unsigned long elapsed = (micros() - breakbeam_start);
-//       double elapsed_sec = elapsed / 1000000.0;
-//       double FPS = dart_length_ft / elapsed_sec;
-//       char output[256];
-//       snprintf(output, 256, "FPS: %0.1f Elapsed: %0.1fms", FPS, elapsed_sec * 1000);
-//       Serial.println(output);
-//       pixels.setPixelColor(0, GREEN);
-//       DisplayFPS(FPS);
-//       DisplayAmmoCount(ammoCount);
-//     }
-//   printlnWithXY((inputValue) ? "beam not broken" : "beam broken", 0, 15);
-
-//   pixels.show();
-// }
-
-// void OnPusherReturnChanged(bool inputValue) {
-//   ammoCount -= inputValue;
-//   jammed = IsFiring() && breakbeam_start > micros() - 500000;
-//   if (fireMode) {
-//     motor2->run(RELEASE);
-//   }
-//   else if (!inputValue || IsLoadingInProgress() || (IsReving() ? false : (!fireLockOn) ? false : true) || !IsDartReadyToFire() || jammed || safetyOn) {
-//     motor2->run(RELEASE);
-//   }
-//   printlnWithXY((!inputValue || IsLoadingInProgress() || (IsReving() ? false : (!fireLockOn) ? false : true) || !IsDartReadyToFire() || jammed || safetyOn) ? "not firing" : "firing", 0, 15);
-//   //println(&display, (inputValue) ? "pusher returned," : "pusher not returned");
-//   Serial.println(&display, ammoCount);
-// }
-
-// void revPinFunction(bool inputValue) {
-//   motor1->run((inputValue && (IsDartReadyToFire() ? true : (!revLockOn) ? true : false) && !jammed && !safetyOn) ? FORWARD : RELEASE);
-//   printlnWithXY((inputValue && (IsDartReadyToFire() ? true : (!revLockOn) ? true : false) && !jammed && !safetyOn) ? "reving" : "not reving", 0, 15);
-// }
-
-// void firePinFunction(bool inputValue) {
-//   currentMillisPusher = millis();
-//   if (inputValue) {
-//     motor2->run((!IsLoadingInProgress() && (IsReving() ? true : (!fireLockOn) ? true : false) && IsDartReadyToFire() && !jammed && !safetyOn) ? FORWARD : RELEASE);
-//     printlnWithXY((!IsLoadingInProgress() && (IsReving() ? true : (!fireLockOn) ? true : false) && IsDartReadyToFire() && !jammed && !safetyOn) ? "firing" : "not firing", 0, 15);
-//     Serial.println(jammed);
-//   }
-//   }
-
-// void dart_ready_to_fire_pinFunction(bool inputValue) {
-//   printlnWithXY((inputValue) ? "dart ready to fire" : "dart not ready to fire", 0, 15);
-// }
-
-// void loadingPinFunction(bool inputValue) {
-//   ammoCount += inputValue;
-//   loadingStart = millis();
-//   printlnWithXY((inputValue) ? "loading" : "not loading", 0, 15);
-//   Serial.println(IsLoadingInProgress());
-// }
-
-// void magSwitchPinFunction(bool inputValue) {
-//   ammoCount = (startingAmmoCountType) ? 35 : startingAmmoCount;
-//   printlnWithXY((inputValue) ? "mag inserted" : "mag not inserted", 0, 15);
-// }
-
 InputStateChangeFunction device_state_functions[num_inputs] = {
   OnBreakbeamChanged,
   OnRevChanged,
@@ -334,9 +265,6 @@ void setup() {
   if (!AFMS.begin(1600, &Wire1)) {  // create with the default frequency 1.6KHz
                                     // if (!AFMS.begin(1000)) {  // OR with a different frequency, say 1KHz
     println(&display, "Could not find Motor Shield. Check wiring.");
-
-    while (1)
-      ;
   }
 
   if (!ss.begin(SEESAW_ADDR)) {
@@ -354,6 +282,7 @@ void setup() {
   ss.pinMode(ENCODER_SWITCH_I2C_PIN, INPUT_PULLUP);
 
   pinMode(A0, INPUT_PULLUP);  //breakbeam pin needs to be input pullup to be read
+
 
   println(&display, "Breakbeam pin configured");
   //Everything is in place, initialize the gun
@@ -397,15 +326,4 @@ void loop() {
   {
     Serial.println(gun_controller.ToString());
   }
-
-
-  /*
-
-  */
 }
-//     if ( < 3){
-//    += 1;
-// }
-// else{
-//    = 1;
-// }

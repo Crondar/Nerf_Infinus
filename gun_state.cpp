@@ -7,8 +7,10 @@ const int _dart_ready_to_fire_index = 3;
 const int _fire_index = 4;
 const int _is_loading_index = 5;
 const int _magazine_inserted_index = 6;
+const int _dart_in_loading_position_index = 7;
+const int _guillotine_return_index = 8;
 
-const int number_of_sensors = 7;
+const int number_of_sensors = 9;
 
 GunState::GunState(bool *input_state, bool *prev_input_state, bool *input_state_changed) {
   this->prev_input_state = prev_input_state;
@@ -34,7 +36,7 @@ bool GunState::IsPusherReturned() {
   return this->input_state[_pusher_return_index];
 }
 bool GunState::IsDartReadyToFire() {
-  return this->input_state[_dart_ready_to_fire_index];
+  return !this->input_state[_dart_ready_to_fire_index];
 }
 bool GunState::IsFiring() {
   return this->input_state[_fire_index];
@@ -44,6 +46,12 @@ bool GunState::IsLoading() {
 }
 bool GunState::IsMagInserted() {
   return this->input_state[_magazine_inserted_index];
+}
+bool GunState::IsDartInLoadingPosition(){
+  return this->input_state[_dart_in_loading_position_index];
+}
+bool GunState::IsGuillotineReturned(){
+  return this->input_state[_guillotine_return_index];
 }
 
 // String GunState::ToString(){

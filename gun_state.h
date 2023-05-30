@@ -19,6 +19,8 @@ public:
   bool IsFiring();
   bool IsLoading();
   bool IsMagInserted();
+  bool IsDartInLoadingPosition();
+  bool IsGuillotineReturned();
 
   // String ToString();
 };

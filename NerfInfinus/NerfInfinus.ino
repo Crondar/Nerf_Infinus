@@ -214,6 +214,14 @@ void OnMagazineLoadedChanged(bool inputVal) {
   gun_controller.OnMagazineLoadedChanged(inputVal);
 }
 
+void OnDartInLoadingPositionChanged(bool inputVal) {
+  gun_controller.OnDartInLoadingPositionChanged(inputVal);
+}
+
+void OnGuillotineReturnChanged(bool inputVal) {
+  gun_controller.OnGuillotineReturnChanged(inputVal);
+}
+
 InputStateChangeFunction device_state_functions[num_inputs] = {
   OnBreakbeamChanged,
   OnRevChanged,
@@ -221,7 +229,9 @@ InputStateChangeFunction device_state_functions[num_inputs] = {
   OnDartReadyToFireChanged,
   OnFireChanged,
   OnDartLoadedChanged,
-  OnMagazineLoadedChanged
+  OnMagazineLoadedChanged,
+  OnDartInLoadingPositionChanged,
+  OnGuillotineReturnChanged
 };
 
 //////////////////////////////////////////////////////////////////////////////////

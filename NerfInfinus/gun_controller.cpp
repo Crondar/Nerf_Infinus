@@ -129,7 +129,7 @@ void GunController::OnPusherReturnChanged(bool inputValue) {
 }
 
 void GunController::OnRevChanged(bool inputValue) {
-  RunFlywheels((inputValue && (this->IsDartReadyToFire() ? true : (!config->revLockOn) ? true : false) /*&& !jammed*/&& !config->safetyOn) ? true : false, true, this->config->motorPWMRange.interpolate(0.0)); // lower bound 25
+  RunFlywheels((inputValue && (this->IsDartReadyToFire() ? true : (!config->revLockOn) ? true : false) /*&& !jammed*/&& !config->safetyOn) ? true : false, true, this->config->motorPWMRange.interpolate(1.0)); // lower bound 25
   _reving = (inputValue && (this->IsDartReadyToFire() ? true : (!config->revLockOn) ? true : false) /*&& !jammed*/ && !config->safetyOn) ? true : false;
 }
 
@@ -161,7 +161,7 @@ void GunController::OnMagazineLoadedChanged(bool inputValue) {
 
 void GunController::OnDartInLoadingPositionChanged(bool inputValue) {
  if (IsPusherReturned()){
-    guillotineMotor->run(FORWARD);
+    guillotineMotor->run(BACKWARD);
   }
   loadingMotor->run(RELEASE);
 }
@@ -174,7 +174,7 @@ void GunController::OnGuillotineReturnChanged(bool inputValue) {
 
 String GunController::ToString(){
   char output[256];
-  snprintf(output, 256, "DiB: %d Rev: %d, PRet: %d, DRF: %d Firing: %d Loading: %d MagInserted: %d", IsDartInBarrel(), _reving, IsPusherReturned(), IsDartReadyToFire(), _firing, IsLoading(), IsMagInserted());
+  snprintf(output, 256, "DiB: %d Rev: %d, PRet: %d, DRF: %d Firing: %d Loading: %d MagInserted: %d DIP: %d GRet %d", IsDartInBarrel(), _reving, IsPusherReturned(), IsDartReadyToFire(), _firing, IsLoading(), IsMagInserted(), IsDartInLoadingPosition(), IsGuillotineReturned());
   //Serial.print(output);
   String result = String(output);
   return result;

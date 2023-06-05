@@ -39,7 +39,7 @@ Adafruit_NeoPixel pixels(NUMPIXELS, PIXEL_PIN, NEO_GRB + NEO_KHZ800);
 // On an arduino LEONARDO:   2(SDA),  3(SCL), ...
 #define OLED_RESET -1        // Reset pin # (or -1 if sharing Arduino reset pin)
 #define SCREEN_ADDRESS 0x3C  ///< See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire1, OLED_RESET);
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 ////////////////////////////////////////////////////////
 
 void DisplayFPS(float FPS) {
@@ -70,7 +70,7 @@ typedef void (*InputStateChangeFunction)(bool);
 
 
 //needs to be D_, A_, etc. to work
-#define barrel_breakbeam_pin A2
+#define barrel_breakbeam_pin A3
 #define revPin D11
 #define pusherReturnPin D12
 #define dart_ready_to_fire_pin D9
@@ -136,7 +136,7 @@ bool input_state_changed[num_inputs] = {};
 //Begin I2C controls
 #define ENCODER_BUTTON_PRESSED_INDEX 9
 
-Adafruit_seesaw ss = Adafruit_seesaw(&Wire1);
+Adafruit_seesaw ss = Adafruit_seesaw(&Wire);
 
 bool inline IsDartInBarrel() {
   return !input_state[BARREL_BREAKBEAM_INDEX];
@@ -242,7 +242,6 @@ void setup() {
   //display does not work without serial monitor
 
   // println(&display, "hello world");
-
   println(&display, "Init Pixels");
   pixels.begin();
   pixels.setPixelColor(0, pixels.Color(0, 128, 0));
@@ -270,18 +269,21 @@ void setup() {
     println(&display, "Display cleared");
   }
 
+  println(&display, "Display Works!");
+
+  while(!ss.begin(SEESAW_ADDR)) {
+    Serial.println("Couldn't find seesaw on default address");
+    println(&display, "No Seesaw!");
+    delay(2000);
+  }
+
+  Serial.println("seesaw started");
+
   println(&display, "Init AFMS");
   if (!AFMS.begin(1600, &Wire1)) {  // create with the default frequency 1.6KHz
                                     // if (!AFMS.begin(1000)) {  // OR with a different frequency, say 1KHz
     println(&display, "Could not find Motor Shield. Check wiring.");
   }
-
-  if (!ss.begin(SEESAW_ADDR)) {
-    Serial.println("Couldn't find seesaw on default address");
-    while (1) delay(10);
-  }
-  Serial.println("seesaw started");
-
 
   ss.setGPIOInterrupts((uint32_t)1 << ENCODER_SWITCH_I2C_PIN, 1);
   println(&display, "Init GPIO Interrupts");
@@ -291,7 +293,6 @@ void setup() {
   ss.pinMode(ENCODER_SWITCH_I2C_PIN, INPUT_PULLUP);
 
   pinMode(A0, INPUT_PULLUP);  //breakbeam pin needs to be input pullup to be read
-
 
   println(&display, "Breakbeam pin configured");
   //Everything is in place, initialize the gun

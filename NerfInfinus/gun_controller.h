@@ -15,7 +15,7 @@ private:
   GunState *model;
 
   Adafruit_MotorShield *AFMS;
-  Adafruit_DCMotor *flywheelMotor;
+  Adafruit_DCMotor *firemotor;
   Adafruit_DCMotor *guillotineMotor;
   Adafruit_DCMotor *loadingMotor;
 

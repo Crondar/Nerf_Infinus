@@ -70,7 +70,7 @@ typedef void (*InputStateChangeFunction)(bool);
 
 
 //needs to be D_, A_, etc. to work
-#define barrel_breakbeam_pin A3
+#define barrel_breakbeam_pin A2
 #define revPin D11
 #define pusherReturnPin D12
 #define dart_ready_to_fire_pin D9
@@ -285,6 +285,8 @@ void setup() {
     println(&display, "Could not find Motor Shield. Check wiring.");
   }
 
+  Serial.println("AFMS Started");
+
   ss.setGPIOInterrupts((uint32_t)1 << ENCODER_SWITCH_I2C_PIN, 1);
   println(&display, "Init GPIO Interrupts");
   ss.enableEncoderInterrupt();
@@ -292,7 +294,7 @@ void setup() {
 
   ss.pinMode(ENCODER_SWITCH_I2C_PIN, INPUT_PULLUP);
 
-  pinMode(A0, INPUT_PULLUP);  //breakbeam pin needs to be input pullup to be read
+  pinMode(barrel_breakbeam_pin, INPUT_PULLUP);  //breakbeam pin needs to be input pullup to be read
 
   println(&display, "Breakbeam pin configured");
   //Everything is in place, initialize the gun
@@ -329,11 +331,12 @@ void loop() {
       any_changed = true;
     }
   }
-
-  MainMenu->Update(); 
-
+ 
   if(any_changed)
   {
     Serial.println(gun_controller.ToString());
   }
+
+  MainMenu->Update(); 
+
 }

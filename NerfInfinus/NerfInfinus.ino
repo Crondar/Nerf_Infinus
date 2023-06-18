@@ -280,9 +280,9 @@ void setup() {
   Serial.println("seesaw started");
 
   println(&display, "Init AFMS");
-  if (!AFMS.begin(1600, &Wire1)) {  // create with the default frequency 1.6KHz
+  if (!AFMS.begin(/*1600, &Wire1*/)) {  // create with the default frequency 1.6KHz
                                     // if (!AFMS.begin(1000)) {  // OR with a different frequency, say 1KHz
-    println(&display, "Could not find Motor Shield. Check wiring.");
+    Serial.println("Could not find Motor Shield. Check wiring.");
   }
 
   Serial.println("AFMS Started");

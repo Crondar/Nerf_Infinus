@@ -10,7 +10,7 @@ GunConfig::GunConfig() {
   this->chronographUnits = FPS;
   this->safetyOn = false;
   this->revLockOn = true;
-  this->fireLockOn = true;
+  this->fireLockOn = false; //should be true
 }
 
 GunConfig::GunConfig(int fireRate, int dartSpeed, int startingAmmoCount, FireMode fireMode, AmmoCountMode ammoCountMode, ChronographUnits chronographUnits, bool safetyOn, bool revLockOn, bool fireLockOn, Range motorPWMRange) {

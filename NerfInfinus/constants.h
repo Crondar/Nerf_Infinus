@@ -6,6 +6,5 @@ const long intervalLoader = 1250;  // Interval, in milliseconds, that the loader
 const int num_encoder_positions = 24;
 const int num_LEDs = 0;
 const int num_input_pins = 9;
-
 #define flywheelPWM A0
 #define flywheelDirection D24

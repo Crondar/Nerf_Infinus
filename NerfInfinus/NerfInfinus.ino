@@ -313,15 +313,25 @@ void setup() {
   //pass it rotary encoder object (ss?)
   //pass the display object or function to print output to
   //
+  delay(10);
+  update_gun_state();
+
+  gun_controller.ResetPusher(inputs[PUSHER_RETURN_INDEX]);
+  gun_controller.ResetGuillotine(inputs[GUILLOTINE_RETURN_INDEX]);
 }
 
-void loop() {
-
-  for (int i = 0; i < gun_state.num_input_pins; i++) {
+void update_gun_state()
+{
+ for (int i = 0; i < gun_state.num_input_pins; i++) {
     gun_state.input_state[i] = digitalRead(inputs[i]);
     gun_state.input_state_changed[i] = gun_state.input_state[i] != gun_state.prev_input_state[i];
     gun_state.prev_input_state[i] = gun_state.input_state[i];
   }
+}
+
+void loop() {
+
+  update_gun_state();
 
   bool any_changed = false;
 

@@ -27,11 +27,14 @@ private:
   double _last_dart_speed_fps;
   bool _firing;
   bool _reving;
+  bool _loading_in_progress;
 
 public:
 
   GunController(GunConfig *config, GunState *model, Adafruit_MotorShield *afms);
   void Initialize();
+  void ResetGuillotine(int gpin);
+  void ResetPusher(int gpin);
 
   bool inline IsLoadingInProgress();
 
